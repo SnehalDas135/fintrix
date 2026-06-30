@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fintrix — Your money, simplified</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<script src="env.js"></script>
+<div class="app">
+
+<div id="setup-banner" class="setup-banner">
+  ⚠️ AI needs either a local Gemini key in <code>env.js</code>, or a Vercel deployment with <code>GEMINI_API_KEY</code> set in Environment Variables.
+</div>
+
+<div class="hero">
+  <div class="hero-eyebrow">Your money, simplified</div>
+  <div class="hero-wordmark">
+    <span class="hero-f">f</span><span class="hero-intrix">intrix</span>
+  </div>
+  <div class="hero-tagline"><em>AI-powered &nbsp;·&nbsp; Beautifully minimal</em></div>
+</div>
+
+<div class="nav">
+  <button class="nav-btn active" data-page="today">Today</button>
+  <button class="nav-btn" data-page="insights">Insights</button>
+  <button class="nav-btn" data-page="ai">AI Advisor</button>
+  <button class="nav-btn" data-page="profile">Profile</button>
+</div>
+
+<!-- ═══════════════════ TODAY PAGE ═══════════════════ -->
+<div id="page-today" class="page active">
+
+  <div class="balance-card">
+    <div class="balance-label">Current Balance</div>
+    <div class="balance-amount" id="disp-balance">₹0</div>
+    <div class="balance-sub" id="disp-balance-sub">No transactions yet</div>
+    <div class="balance-bar-row">
+      <div class="balance-bar"><div id="balance-fill" class="balance-fill" style="width:0%"></div></div>
+      <div class="balance-spent-label" id="disp-spent-pct">0% spent</div>
+    </div>
+  </div>
+
+  <div class="summary-row" style="margin-top:16px">
+    <div class="summary-card">
+      <div class="summary-label">Income</div>
+      <div class="summary-val text-income" id="disp-income">₹0</div>
+      <div class="summary-sub" id="disp-income-count">0 sources</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">Expenses</div>
+      <div class="summary-val text-expense" id="disp-expense">₹0</div>
+      <div class="summary-sub" id="disp-expense-count">0 transactions</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">Needs</div>
+      <div class="summary-val text-income" id="disp-needs">₹0</div>
+      <div class="summary-sub">essentials</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">Wants</div>
+      <div class="summary-val" style="color:var(--wants)" id="disp-wants">₹0</div>
+      <div class="summary-sub">discretionary</div>
+    </div>
+  </div>
+
+  <div class="section-label" style="margin-top:8px">Quick actions</div>
+  <div class="quick-actions">
+    <button class="btn-action primary" id="analyze-quick-btn">✨ Analyze Finances</button>
+    <button class="btn-action" id="export-btn">⬇ Export</button>
+    <button class="btn-action" id="import-btn-trigger">⬆ Import</button>
+    <input type="file" id="import-file" class="hidden-input" accept=".json">
+  </div>
+
+  <div class="section-label">Log an expense</div>
+  <div class="add-row">
+    <input type="text" id="expense-input" placeholder="e.g. Spotify ₹119, Biryani 220, Uber ride...">
+    <button class="btn-income" id="income-toggle-btn">+ Income</button>
+    <button class="btn-add" id="log-expense-btn">Log ↗</button>
+  </div>
+  <div id="expense-ai-result" class="ai-result-box"></div>
+
+  <div id="income-form" style="display:none;margin-bottom:16px">
+    <div class="income-row">
+      <input type="number" id="income-amount" placeholder="Amount (₹)" min="0" step="0.01">
+      <select id="income-source" class="field-input" style="padding:12px 14px">
+        <option value="Pocket Money">Pocket Money</option>
+        <option value="Salary">Salary</option>
+        <option value="Internship">Internship</option>
+        <option value="Scholarship">Scholarship</option>
+        <option value="Freelance">Freelance</option>
+        <option value="Refund">Refund</option>
+        <option value="Gift">Gift</option>
+        <option value="Investment Returns">Investment Returns</option>
+        <option value="Cashback">Cashback</option>
+        <option value="Other">Other</option>
+      </select>
+      <button class="btn-income" id="add-income-btn">Add</button>
+    </div>
+  </div>
+
+  <div class="section-label">Today's transactions</div>
+  <div class="tx-list" id="tx-list">
+    <div style="color:var(--gray5);font-size:14px;text-align:center;padding:24px 0">No transactions yet — log an expense above</div>
+  </div>
+
+  <div class="section-label">Budgets</div>
+  <div class="budget-list" id="budget-list"></div>
+  <button class="btn-action" id="add-budget-btn" style="margin-bottom:24px">+ Add budget</button>
+
+  <div class="section-label">Savings goals</div>
+  <div class="goal-list" id="goal-list"></div>
+  <button class="btn-action" id="add-goal-btn" style="margin-bottom:24px">+ Add goal</button>
+
+</div>
+
+<!-- ═══════════════════ INSIGHTS PAGE ═══════════════════ -->
+<div id="page-insights" class="page">
+  <div class="tab-row">
+    <button class="tab active" data-trend="weekly">Weekly</button>
+    <button class="tab" data-trend="monthly">Monthly</button>
+    <button class="tab" data-trend="yearly">Yearly</button>
+  </div>
+
+  <div class="chart-card">
+    <div class="chart-header"><div class="chart-title" id="trend-title">This week</div></div>
+    <div class="chart-sub" id="trend-sub">Income vs Expenses</div>
+    <div class="chart-legend-inline">
+      <span class="chart-legend-chip"><span class="legend-swatch legend-swatch-income"></span>Income</span>
+      <span class="chart-legend-chip"><span class="legend-swatch legend-swatch-expense"></span>Expenses</span>
+    </div>
+    <div class="chart-wrap chart-wrap-trend"><canvas id="trend-chart"></canvas></div>
+  </div>
+
+  <div class="chart-card">
+    <div class="chart-title chart-title-spaced">Category Breakdown</div>
+    <div class="chart-sub">Where your money went</div>
+    <div class="chart-wrap chart-wrap-macro"><canvas id="cat-bar-chart"></canvas></div>
+  </div>
+
+  <div class="donut-section">
+    <div class="donut-card">
+      <div class="donut-title">Needs vs Wants</div>
+      <div class="donut-subtitle">Spending split</div>
+      <div class="donut-wrap"><canvas id="donut-nw"></canvas></div>
+      <div class="legend-row">
+        <div class="legend-item"><div class="legend-dot bg-needs"></div>Needs</div>
+        <div class="legend-item"><div class="legend-dot bg-wants"></div>Wants</div>
+      </div>
+    </div>
+    <div class="donut-card">
+      <div class="donut-title">Cash Flow</div>
+      <div class="donut-subtitle">Income vs Expense</div>
+      <div class="donut-wrap"><canvas id="donut-flow"></canvas></div>
+      <div class="legend-row">
+        <div class="legend-item"><div class="legend-dot bg-income"></div>Income</div>
+        <div class="legend-item"><div class="legend-dot bg-expense"></div>Expense</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-label">Subscriptions detected</div>
+  <div class="sub-list" id="sub-list">
+    <div style="color:var(--gray5);font-size:14px;text-align:center;padding:16px 0">Log expenses to detect subscriptions</div>
+  </div>
+
+  <button class="analyze-btn" id="analyze-btn">✨ Analyze My Finances</button>
+  <div id="analyze-result" class="ai-result-box"></div>
+</div>
+
+<!-- ═══════════════════ AI ADVISOR PAGE ═══════════════════ -->
+<div id="page-ai" class="page">
+  <div class="ai-badge">✨ Powered by Gemini</div>
+  <div class="chat-area" id="chat-area">
+    <div class="chat-msg ai">Hey! I'm your Fintrix AI — your personal finance manager powered by Gemini. I know your income, expenses, budgets, and goals. Ask me anything about your money.</div>
+  </div>
+  <div class="typing" id="typing-indicator"><span></span><span></span><span></span></div>
+  <div class="chat-input-row">
+    <input type="text" id="chat-input" placeholder="Ask anything about your finances...">
+    <button class="btn-send" id="send-chat-btn">Send</button>
+  </div>
+  <div class="quick-ask-row">
+    <button class="btn-chip" data-question="Where am I overspending?">Overspending?</button>
+    <button class="btn-chip" data-question="Which subscriptions should I cancel?">Subscription audit</button>
+    <button class="btn-chip" data-question="How can I save more money this month?">Save more</button>
+    <button class="btn-chip" data-question="Give me a student budget plan">Student budget</button>
+    <button class="btn-chip" data-question="What's my spending on food and outside eating?">Food spending</button>
+    <button class="btn-chip" data-question="Am I on track to hit my savings goals?">Savings check</button>
+  </div>
+</div>
+
+<!-- ═══════════════════ PROFILE PAGE ═══════════════════ -->
+<div id="page-profile" class="page">
+  <div class="section-label">Your details</div>
+  <div class="profile-section">
+    <div class="profile-row">
+      <div class="field-group"><div class="field-label">Name</div><input class="field-input" id="p-name" type="text" placeholder="Your name"></div>
+      <div class="field-group"><div class="field-label">Age</div><input class="field-input" id="p-age" type="number" value="20" min="13" max="80"></div>
+    </div>
+    <div class="field-group"><div class="field-label">Occupation</div>
+      <select class="field-input" id="p-occupation">
+        <option value="Student">Student</option>
+        <option value="Working professional">Working professional</option>
+        <option value="Freelancer">Freelancer</option>
+        <option value="Other">Other</option>
+      </select>
+    </div>
+    <div class="profile-row">
+      <div class="field-group"><div class="field-label">Monthly income (₹)</div><input class="field-input" id="p-income" type="number" value="15000" min="0"></div>
+      <div class="field-group"><div class="field-label">Currency</div>
+        <select class="field-input" id="p-currency">
+          <option value="₹">₹ INR</option>
+          <option value="$">$ USD</option>
+          <option value="€">€ EUR</option>
+          <option value="£">£ GBP</option>
+        </select>
+      </div>
+    </div>
+    <div class="field-group"><div class="field-label">Financial goal</div>
+      <select class="field-input" id="p-goal">
+        <option value="Save aggressively">Save aggressively</option>
+        <option value="Build an emergency fund">Build an emergency fund</option>
+        <option value="Invest regularly">Invest regularly</option>
+        <option value="Reduce spending">Reduce spending</option>
+        <option value="Pay off debt">Pay off debt</option>
+        <option value="No specific goal">No specific goal</option>
+      </select>
+    </div>
+    <div class="field-group"><div class="field-label">Monthly budget (₹)</div><input class="field-input" id="p-budget" type="number" value="10000" min="0"></div>
+    <button class="btn-calc" id="save-profile-btn">Save profile</button>
+  </div>
+
+  <div class="section-label">Your targets</div>
+  <div class="targets-grid" id="profile-targets-grid">
+    <div class="target-card"><div class="target-label">Monthly Budget</div><div class="target-val text-income" id="t-budget">₹0</div></div>
+    <div class="target-card"><div class="target-label">Savings Target</div><div class="target-val text-savings" id="t-savings">₹0</div></div>
+    <div class="target-card"><div class="target-label">Needs Limit</div><div class="target-val" style="color:var(--needs)" id="t-needs">₹0</div></div>
+    <div class="target-card"><div class="target-label">Wants Limit</div><div class="target-val" style="color:var(--wants)" id="t-wants">₹0</div></div>
+  </div>
+
+  <div class="section-label">Data</div>
+  <div class="profile-section">
+    <button class="btn-calc" id="export-profile-btn">⬇ Export all data (JSON)</button>
+    <button class="btn-calc danger" id="reset-btn">⚠ Reset all data</button>
+  </div>
+</div>
+
+</div><!-- .app -->
+
+<footer class="app-footer">Fintrix · Your money, simplified</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
