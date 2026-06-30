@@ -11,42 +11,27 @@ const CONFIG = {
   MODEL: typeof env !== 'undefined' ? env.MODEL : "gemini-2.5-flash-lite"
 };
 
+// Fallback chain: if the configured model is overloaded (503) or rate-limited (429),
+// automatically retry with the next model in this list before giving up.
+const MODEL_FALLBACKS = [
+  CONFIG.MODEL,
+  "gemini-flash-lite-latest",
+  "gemini-2.5-flash",
+  "gemini-flash-latest"
+].filter(function(m, i, arr){ return arr.indexOf(m) === i; }); // de-dupe, keep order
+
 if(!CONFIG.API_KEY && location.protocol === 'file:'){
   document.getElementById('setup-banner').classList.add('show');
 }
 
-function geminiUrl(){
-  return 'https://generativelanguage.googleapis.com/v1beta/models/'+CONFIG.MODEL+':generateContent?key='+CONFIG.API_KEY;
+function geminiUrl(model){
+  return 'https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent?key='+CONFIG.API_KEY;
 }
 
-function toGeminiParts(content){
-  if(typeof content === 'string') return [{text: content}];
-  var parts = [];
-  content.forEach(function(part){
-    if(part.type === 'text') parts.push({text: part.text});
-    if(part.type === 'image') parts.push({inline_data: {mime_type: part.source.media_type, data: part.source.data}});
-  });
-  return parts;
-}
-
-function toGeminiContents(messages){
-  return messages.map(function(m){
-    return {
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: toGeminiParts(m.content)
-    };
-  });
-}
-
-async function callGemini(opts){
-  var body = {
-    contents: opts.contents,
-    generationConfig: {maxOutputTokens: opts.maxTokens || 1000}
-  };
-  if(opts.system) body.systemInstruction = {parts: [{text: opts.system}]};
+async function callGeminiOnce(model, body){
   var r;
   if(CONFIG.API_KEY){
-    r = await fetch(geminiUrl(), {
+    r = await fetch(geminiUrl(model), {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(body)
@@ -55,15 +40,54 @@ async function callGemini(opts){
     r = await fetch('/api/gemini', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({model: CONFIG.MODEL, payload: body})
+      body: JSON.stringify({model: model, payload: body})
     });
   }
   var d = await r.json();
-  if(d.error) return {error: d.error.message || 'Gemini API error'};
-  var text = d.candidates && d.candidates[0] && d.candidates[0].content && d.candidates[0].content.parts;
-  text = text && text.map(function(p){ return p.text || ''; }).join('').trim();
-  if(!text) return {error: 'No response from Gemini'};
-  return {text: text};
+  return {status: r.status, data: d};
+}
+
+function isOverloadOrRateLimit(status, data){
+  if(status === 429 || status === 503) return true;
+  var msg = (data && data.error && data.error.message || '').toLowerCase();
+  return msg.indexOf('overload') !== -1 || msg.indexOf('high demand') !== -1 || msg.indexOf('unavailable') !== -1 || msg.indexOf('rate limit') !== -1 || msg.indexOf('quota') !== -1;
+}
+
+async function callGemini(opts){
+  var body = {
+    contents: opts.contents,
+    generationConfig: {maxOutputTokens: opts.maxTokens || 1000}
+  };
+  if(opts.system) body.systemInstruction = {parts: [{text: opts.system}]};
+
+  var lastError = 'Gemini API error';
+  for(var i=0;i<MODEL_FALLBACKS.length;i++){
+    var model = MODEL_FALLBACKS[i];
+    try{
+      var result = await callGeminiOnce(model, body);
+      var d = result.data;
+      if(d.error){
+        lastError = d.error.message || lastError;
+        if(isOverloadOrRateLimit(result.status, d) && i < MODEL_FALLBACKS.length-1){
+          continue; // try next model in the chain
+        }
+        return {error: lastError};
+      }
+      var text = d.candidates && d.candidates[0] && d.candidates[0].content && d.candidates[0].content.parts;
+      text = text && text.map(function(p){ return p.text || ''; }).join('').trim();
+      if(!text){
+        lastError = 'No response from Gemini';
+        if(i < MODEL_FALLBACKS.length-1) continue;
+        return {error: lastError};
+      }
+      return {text: text, modelUsed: model};
+    }catch(e){
+      lastError = e.message || lastError;
+      if(i < MODEL_FALLBACKS.length-1) continue;
+      return {error: lastError};
+    }
+  }
+  return {error: lastError};
 }
 
 function checkKey(){
@@ -613,11 +637,31 @@ function renderProfile(){
 
   var budget = state.profile.monthlyBudget||0;
   var income = state.profile.monthlyIncome||0;
-  var savingsTarget = Math.max(income-budget,0);
+  var goal = state.profile.financialGoal||'Save aggressively';
+
+  // Each goal shifts how much of income should go to savings vs spending,
+  // and how the spending budget itself splits between needs and wants.
+  var goalProfiles = {
+    'Save aggressively':   {savingsRate:0.30, needsSplit:0.65, wantsSplit:0.35},
+    'Build an emergency fund': {savingsRate:0.25, needsSplit:0.65, wantsSplit:0.35},
+    'Invest regularly':    {savingsRate:0.20, needsSplit:0.60, wantsSplit:0.40},
+    'Reduce spending':     {savingsRate:0.15, needsSplit:0.70, wantsSplit:0.30},
+    'Pay off debt':        {savingsRate:0.10, needsSplit:0.75, wantsSplit:0.25},
+    'No specific goal':    {savingsRate:0.10, needsSplit:0.60, wantsSplit:0.40}
+  };
+  var gp = goalProfiles[goal] || goalProfiles['No specific goal'];
+
+  // Savings target is goal-driven: a fraction of income, but never more than
+  // what's actually left after the budget (can't save money you've already budgeted to spend).
+  var goalDrivenSavings = income * gp.savingsRate;
+  var leftoverAfterBudget = Math.max(income - budget, 0);
+  var savingsTarget = Math.min(goalDrivenSavings, Math.max(leftoverAfterBudget, goalDrivenSavings * 0.5));
+  if(income === 0) savingsTarget = 0;
+
   document.getElementById('t-budget').innerHTML = fmt(budget);
   document.getElementById('t-savings').innerHTML = fmt(savingsTarget);
-  document.getElementById('t-needs').innerHTML = fmt(budget*0.6);
-  document.getElementById('t-wants').innerHTML = fmt(budget*0.4);
+  document.getElementById('t-needs').innerHTML = fmt(budget*gp.needsSplit);
+  document.getElementById('t-wants').innerHTML = fmt(budget*gp.wantsSplit);
 }
 
 function saveProfile(){
