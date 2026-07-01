@@ -125,7 +125,12 @@ const NEEDS_CATEGORIES = new Set(['Groceries','Books','Stationery','College Fees
 
 function defaultState(){
   return {
-    profile:{name:'',age:20,occupation:'Student',monthlyIncome:15000,currency:'₹',financialGoal:'Save aggressively',monthlyBudget:10000},
+    profile:{
+      name:'', age:20, occupation:'Student', currency:'\u20b9', financialGoal:'Save aggressively',
+      savingsMode:'percent', savingsPct:20, savingsAmt:0,
+      needsPct:60, wantsPct:40
+    },
+    incomeSources:[],
     income:[],
     expenses:[],
     budgets:[
@@ -148,6 +153,7 @@ function loadState(){
     var d = defaultState();
     return Object.assign(d, parsed, {
       profile: Object.assign(d.profile, parsed.profile||{}),
+      incomeSources: parsed.incomeSources||[],
       income: parsed.income||[],
       expenses: parsed.expenses||[],
       budgets: parsed.budgets||d.budgets,
@@ -177,6 +183,49 @@ function isThisMonth(dateStr){
   return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth();
 }
 
+/* Converts any income source to monthly equivalent */
+function toMonthly(amount, period){
+  if(period==='daily') return amount * 30.44;
+  if(period==='weekly') return amount * 4.33;
+  return amount; // monthly
+}
+
+/* Compute total monthly income from all income sources */
+function totalMonthlyIncome(){
+  return (state.incomeSources||[]).reduce(function(s,src){
+    return s + toMonthly(src.amount, src.period);
+  }, 0);
+}
+
+/* Derive savings amount from profile settings */
+function computeSavings(monthlyIncome){
+  var p = state.profile;
+  if(p.savingsMode === 'amount'){
+    return Math.min(p.savingsAmt||0, monthlyIncome);
+  }
+  return monthlyIncome * ((p.savingsPct||0) / 100);
+}
+
+/* Derive spendable, needs budget, wants budget */
+function computeBudgetTargets(){
+  var monthly = totalMonthlyIncome();
+  var savings = computeSavings(monthly);
+  var spendable = Math.max(monthly - savings, 0);
+  var p = state.profile;
+  var needsPct = (p.needsPct||60) / 100;
+  var wantsPct = (p.wantsPct||40) / 100;
+  return {
+    monthly: monthly,
+    savings: savings,
+    savingsPct: monthly > 0 ? (savings/monthly*100) : 0,
+    spendable: spendable,
+    needs: spendable * needsPct,
+    wants: spendable * wantsPct,
+    needsPct: needsPct,
+    wantsPct: wantsPct
+  };
+}
+
 /* ============================================================
    NAVIGATION
    ============================================================ */
@@ -196,16 +245,15 @@ function showPage(id, btn){
    ============================================================ */
 
 function computeStats(){
-  var monthIncome = state.income.filter(function(i){return isThisMonth(i.date);}).reduce(function(s,i){return s+i.amount;},0);
+  var targets = computeBudgetTargets();
+  var monthIncome = targets.monthly; // from income sources (always current)
   var monthExpense = state.expenses.filter(function(e){return isThisMonth(e.date);}).reduce(function(s,e){return s+e.amount;},0);
-  var totalIncome = state.income.reduce(function(s,i){return s+i.amount;},0);
   var totalExpense = state.expenses.reduce(function(s,e){return s+e.amount;},0);
   var needs = state.expenses.filter(function(e){return isThisMonth(e.date)&&e.needWant==='need';}).reduce(function(s,e){return s+e.amount;},0);
   var wants = state.expenses.filter(function(e){return isThisMonth(e.date)&&e.needWant==='want';}).reduce(function(s,e){return s+e.amount;},0);
-  var balance = totalIncome - totalExpense;
-  var budget = state.profile.monthlyBudget || 0;
-  var spentPct = budget>0 ? Math.min(monthExpense/budget*100,100) : 0;
-  return {monthIncome,monthExpense,totalIncome,totalExpense,needs,wants,balance,budget,spentPct};
+  var balance = monthIncome - monthExpense;
+  var spentPct = targets.spendable>0 ? Math.min(monthExpense/targets.spendable*100,100) : 0;
+  return {monthIncome, monthExpense, totalExpense, needs, wants, balance, spentPct, targets};
 }
 
 function renderToday(){
@@ -214,14 +262,22 @@ function renderToday(){
   document.getElementById('disp-balance-sub').textContent = s.balance>=0
     ? 'You\'re in the green this month' : 'You\'ve spent more than you earned';
   document.getElementById('balance-fill').style.width = s.spentPct+'%';
-  document.getElementById('disp-spent-pct').textContent = Math.round(s.spentPct)+'% of budget spent';
+  document.getElementById('disp-spent-pct').textContent = Math.round(s.spentPct)+'% of spendable used';
 
   document.getElementById('disp-income').textContent = fmt(s.monthIncome);
-  document.getElementById('disp-income-count').textContent = state.income.filter(function(i){return isThisMonth(i.date);}).length+' sources this month';
+  document.getElementById('disp-income-count').textContent = (state.incomeSources||[]).length+' source'+(state.incomeSources.length!==1?'s':'');
   document.getElementById('disp-expense').textContent = fmt(s.monthExpense);
-  document.getElementById('disp-expense-count').textContent = state.expenses.filter(function(e){return isThisMonth(e.date);}).length+' transactions this month';
+  document.getElementById('disp-expense-count').textContent = state.expenses.filter(function(e){return isThisMonth(e.date);}).length+' transactions';
   document.getElementById('disp-needs').textContent = fmt(s.needs);
+  var needsBudget = s.targets.needs;
+  document.getElementById('disp-needs-pct').textContent = needsBudget>0
+    ? Math.round(s.needs/needsBudget*100)+'% of '+fmt(needsBudget)+' budget'
+    : 'essentials';
   document.getElementById('disp-wants').textContent = fmt(s.wants);
+  var wantsBudget = s.targets.wants;
+  document.getElementById('disp-wants-pct').textContent = wantsBudget>0
+    ? Math.round(s.wants/wantsBudget*100)+'% of '+fmt(wantsBudget)+' budget'
+    : 'discretionary';
 
   renderTxList();
   renderBudgets();
@@ -386,17 +442,7 @@ function safeParseJSON(text){
   }
 }
 
-function addIncome(){
-  var amtInp = document.getElementById('income-amount');
-  var amt = parseFloat(amtInp.value);
-  if(!amt || amt<=0) return;
-  var source = document.getElementById('income-source').value;
-  state.income.push({id:uid(), amount:amt, source:source, date:new Date().toISOString(), notes:''});
-  saveState();
-  amtInp.value='';
-  document.getElementById('income-form').style.display='none';
-  renderToday();
-}
+
 
 /* ============================================================
    INSIGHTS / CHARTS
@@ -542,6 +588,7 @@ function buildFinancialSnapshot(){
     goals: state.goals,
     subscriptions: subs.map(function(s){return {name:s.name, amount:s.amount};}),
     recentExpenses: state.expenses.slice(-20).map(function(e){return {name:e.name,amount:e.amount,category:e.category,needWant:e.needWant,date:e.date};}),
+    incomeSources: (state.incomeSources||[]).map(function(s){return {source:s.source,period:s.period,amount:s.amount,monthlyEquiv:toMonthly(s.amount,s.period)};}),
     recentIncome: state.income.slice(-10).map(function(i){return {source:i.source,amount:i.amount,date:i.date};})
   };
 }
@@ -626,52 +673,160 @@ function quickAsk(q){
    PROFILE PAGE
    ============================================================ */
 
+/* Income source period conversions */
+var PERIOD_LABELS = {daily:'/ day', weekly:'/ week', monthly:'/ month'};
+
+function renderIncomeSources(){
+  var list = document.getElementById('income-sources-list');
+  var sources = state.incomeSources || [];
+  if(sources.length === 0){
+    list.innerHTML = '<div class="income-sources-empty">No income sources yet — add one below</div>';
+  } else {
+    list.innerHTML = sources.map(function(src){
+      var label = PERIOD_LABELS[src.period] || '/mo';
+      return '<div class="income-source-item">'
+        +'<div class="income-source-left">'
+        +'<div class="income-source-name">'+escapeHtml(src.source)+'</div>'
+        +'<div class="income-source-meta">'+src.period.charAt(0).toUpperCase()+src.period.slice(1)
+        +' · '+fmt(toMonthly(src.amount,src.period))+'/mo</div>'
+        +'</div>'
+        +'<div class="income-source-amount">'+fmt(src.amount)+' '+label+'</div>'
+        +'<button class="income-source-delete" onclick="deleteIncomeSource(\'' + src.id + '\')">✕</button>'
+        +'</div>';
+    }).join('');
+  }
+  renderIncomeTotals();
+}
+
+function renderIncomeTotals(){
+  var monthly = totalMonthlyIncome();
+  document.getElementById('inc-total-daily').textContent = fmt(monthly/30.44);
+  document.getElementById('inc-total-weekly').textContent = fmt(monthly/4.33);
+  document.getElementById('inc-total-monthly').textContent = fmt(monthly);
+  document.getElementById('inc-total-annual').textContent = fmt(monthly*12);
+}
+
+function deleteIncomeSource(id){
+  state.incomeSources = state.incomeSources.filter(function(s){return s.id!==id;});
+  saveState();
+  renderIncomeSources();
+  updateSavingsDerived();
+  updateAllocDerived();
+  updateTargetCards();
+  renderToday();
+}
+
+function addIncomeSource(){
+  var amount = parseFloat(document.getElementById('inc-amount').value);
+  if(!amount || amount <= 0){ document.getElementById('inc-amount').focus(); return; }
+  var source = document.getElementById('inc-source').value;
+  var period = document.getElementById('inc-period').value;
+  state.incomeSources.push({id:uid(), source:source, period:period, amount:amount});
+  saveState();
+  document.getElementById('inc-amount').value = '';
+  renderIncomeSources();
+  updateSavingsDerived();
+  updateAllocDerived();
+  updateTargetCards();
+  renderToday();
+}
+
+/* Live savings derived text */
+function updateSavingsDerived(){
+  var monthly = totalMonthlyIncome();
+  var p = state.profile;
+  var mode = p.savingsMode || 'percent';
+  if(mode === 'percent'){
+    var pct = parseFloat(document.getElementById('p-savings-pct').value)||0;
+    var amt = monthly * pct/100;
+    document.getElementById('savings-derived-pct').textContent = '= '+fmt(amt)+' / month';
+  } else {
+    var savingsAmt = parseFloat(document.getElementById('p-savings-amt').value)||0;
+    var pctOfIncome = monthly>0 ? Math.round(savingsAmt/monthly*100) : 0;
+    document.getElementById('savings-derived-amt').textContent = '= '+pctOfIncome+'% of income';
+  }
+}
+
+/* Live allocation derived text */
+function updateAllocDerived(){
+  var monthly = totalMonthlyIncome();
+  var p = state.profile;
+  var mode = p.savingsMode || 'percent';
+  var savings = mode === 'percent'
+    ? monthly * ((parseFloat(document.getElementById('p-savings-pct').value)||0)/100)
+    : Math.min(parseFloat(document.getElementById('p-savings-amt').value)||0, monthly);
+  var spendable = Math.max(monthly - savings, 0);
+  var needsPct = parseFloat(document.getElementById('p-needs-pct').value)||0;
+  var wantsPct = parseFloat(document.getElementById('p-wants-pct').value)||0;
+  var total = needsPct + wantsPct;
+  document.getElementById('needs-derived').textContent = '= '+fmt(spendable*needsPct/100);
+  document.getElementById('wants-derived').textContent = '= '+fmt(spendable*wantsPct/100);
+  var val = document.getElementById('alloc-validation');
+  if(total === 100){
+    val.textContent = '✓ Adds up to 100%'; val.className = 'alloc-validation alloc-ok';
+  } else if(total < 100){
+    val.textContent = (100-total)+'% unallocated'; val.className = 'alloc-validation alloc-err';
+  } else {
+    val.textContent = 'Exceeds 100% by '+(total-100)+'%'; val.className = 'alloc-validation alloc-err';
+  }
+}
+
+/* Update the four target cards at bottom of profile */
+function updateTargetCards(){
+  var targets = computeBudgetTargets();
+  document.getElementById('t-income').innerHTML = fmt(targets.monthly);
+  document.getElementById('t-savings').innerHTML = fmt(targets.savings);
+  document.getElementById('t-savings-sub').textContent = Math.round(targets.savingsPct)+'% of income';
+  document.getElementById('t-needs').innerHTML = fmt(targets.needs);
+  document.getElementById('t-needs-sub').textContent = (state.profile.needsPct||60)+'% of spendable';
+  document.getElementById('t-wants').innerHTML = fmt(targets.wants);
+  document.getElementById('t-wants-sub').textContent = (state.profile.wantsPct||40)+'% of spendable';
+}
+
 function renderProfile(){
-  document.getElementById('p-name').value = state.profile.name||'';
-  document.getElementById('p-age').value = state.profile.age||20;
-  document.getElementById('p-occupation').value = state.profile.occupation||'Student';
-  document.getElementById('p-income').value = state.profile.monthlyIncome||0;
-  document.getElementById('p-currency').value = state.profile.currency||'₹';
-  document.getElementById('p-goal').value = state.profile.financialGoal||'Save aggressively';
-  document.getElementById('p-budget').value = state.profile.monthlyBudget||0;
+  var p = state.profile;
+  document.getElementById('p-name').value = p.name||'';
+  document.getElementById('p-age').value = p.age||20;
+  document.getElementById('p-occupation').value = p.occupation||'Student';
+  document.getElementById('p-currency').value = p.currency||'₹';
+  document.getElementById('p-goal').value = p.financialGoal||'Save aggressively';
 
-  var budget = state.profile.monthlyBudget||0;
-  var income = state.profile.monthlyIncome||0;
-  var goal = state.profile.financialGoal||'Save aggressively';
+  // Savings mode
+  var mode = p.savingsMode||'percent';
+  document.getElementById('savings-mode-pct').classList.toggle('active', mode==='percent');
+  document.getElementById('savings-mode-amt').classList.toggle('active', mode==='amount');
+  document.getElementById('savings-pct-row').style.display = mode==='percent' ? '' : 'none';
+  document.getElementById('savings-amt-row').style.display = mode==='amount' ? '' : 'none';
+  document.getElementById('p-savings-pct').value = p.savingsPct||20;
+  document.getElementById('p-savings-amt').value = p.savingsAmt||0;
 
-  // Each goal shifts how much of income should go to savings vs spending,
-  // and how the spending budget itself splits between needs and wants.
-  var goalProfiles = {
-    'Save aggressively':   {savingsRate:0.30, needsSplit:0.65, wantsSplit:0.35},
-    'Build an emergency fund': {savingsRate:0.25, needsSplit:0.65, wantsSplit:0.35},
-    'Invest regularly':    {savingsRate:0.20, needsSplit:0.60, wantsSplit:0.40},
-    'Reduce spending':     {savingsRate:0.15, needsSplit:0.70, wantsSplit:0.30},
-    'Pay off debt':        {savingsRate:0.10, needsSplit:0.75, wantsSplit:0.25},
-    'No specific goal':    {savingsRate:0.10, needsSplit:0.60, wantsSplit:0.40}
-  };
-  var gp = goalProfiles[goal] || goalProfiles['No specific goal'];
+  // Allocation
+  document.getElementById('p-needs-pct').value = p.needsPct||60;
+  document.getElementById('p-wants-pct').value = p.wantsPct||40;
 
-  // Savings target is goal-driven: a fraction of income, but never more than
-  // what's actually left after the budget (can't save money you've already budgeted to spend).
-  var goalDrivenSavings = income * gp.savingsRate;
-  var leftoverAfterBudget = Math.max(income - budget, 0);
-  var savingsTarget = Math.min(goalDrivenSavings, Math.max(leftoverAfterBudget, goalDrivenSavings * 0.5));
-  if(income === 0) savingsTarget = 0;
-
-  document.getElementById('t-budget').innerHTML = fmt(budget);
-  document.getElementById('t-savings').innerHTML = fmt(savingsTarget);
-  document.getElementById('t-needs').innerHTML = fmt(budget*gp.needsSplit);
-  document.getElementById('t-wants').innerHTML = fmt(budget*gp.wantsSplit);
+  renderIncomeSources();
+  updateSavingsDerived();
+  updateAllocDerived();
+  updateTargetCards();
 }
 
 function saveProfile(){
-  state.profile.name = document.getElementById('p-name').value.trim();
-  state.profile.age = parseInt(document.getElementById('p-age').value)||20;
-  state.profile.occupation = document.getElementById('p-occupation').value;
-  state.profile.monthlyIncome = parseFloat(document.getElementById('p-income').value)||0;
-  state.profile.currency = document.getElementById('p-currency').value;
-  state.profile.financialGoal = document.getElementById('p-goal').value;
-  state.profile.monthlyBudget = parseFloat(document.getElementById('p-budget').value)||0;
+  var p = state.profile;
+  p.name = document.getElementById('p-name').value.trim();
+  p.age = parseInt(document.getElementById('p-age').value)||20;
+  p.occupation = document.getElementById('p-occupation').value;
+  p.currency = document.getElementById('p-currency').value;
+  p.financialGoal = document.getElementById('p-goal').value;
+
+  // Savings
+  p.savingsMode = p.savingsMode || 'percent'; // mode set via button clicks
+  p.savingsPct = Math.min(100, Math.max(0, parseFloat(document.getElementById('p-savings-pct').value)||0));
+  p.savingsAmt = Math.max(0, parseFloat(document.getElementById('p-savings-amt').value)||0);
+
+  // Allocation
+  p.needsPct = Math.max(0, parseFloat(document.getElementById('p-needs-pct').value)||60);
+  p.wantsPct = Math.max(0, parseFloat(document.getElementById('p-wants-pct').value)||40);
+
   saveState();
   renderProfile();
   renderToday();
@@ -756,12 +911,6 @@ function bindEvents(){
     if(e.key==='Enter') logExpenseAI();
   });
 
-  document.getElementById('income-toggle-btn').addEventListener('click',function(){
-    var form = document.getElementById('income-form');
-    form.style.display = form.style.display==='none' ? 'block' : 'none';
-  });
-  document.getElementById('add-income-btn').addEventListener('click',addIncome);
-
   document.getElementById('add-budget-btn').addEventListener('click',addBudget);
   document.getElementById('add-goal-btn').addEventListener('click',addGoal);
 
@@ -790,6 +939,35 @@ function bindEvents(){
   });
 
   document.getElementById('save-profile-btn').addEventListener('click',saveProfile);
+
+  // Income source add button
+  document.getElementById('add-income-source-btn').addEventListener('click',addIncomeSource);
+  document.getElementById('inc-amount').addEventListener('keydown',function(e){
+    if(e.key==='Enter') addIncomeSource();
+  });
+
+  // Savings mode toggle
+  document.querySelectorAll('.savings-mode-btn').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      state.profile.savingsMode = btn.dataset.mode;
+      document.querySelectorAll('.savings-mode-btn').forEach(function(b){b.classList.remove('active');});
+      btn.classList.add('active');
+      document.getElementById('savings-pct-row').style.display = btn.dataset.mode==='percent' ? '' : 'none';
+      document.getElementById('savings-amt-row').style.display = btn.dataset.mode==='amount' ? '' : 'none';
+      updateSavingsDerived();
+      updateAllocDerived();
+      updateTargetCards();
+    });
+  });
+
+  // Live update derived fields as user types
+  ['p-savings-pct','p-savings-amt','p-needs-pct','p-wants-pct'].forEach(function(id){
+    document.getElementById(id).addEventListener('input',function(){
+      updateSavingsDerived();
+      updateAllocDerived();
+      updateTargetCards();
+    });
+  });
 }
 
 bindEvents();

@@ -48,7 +48,7 @@
     <div class="summary-card">
       <div class="summary-label">Income</div>
       <div class="summary-val text-income" id="disp-income">₹0</div>
-      <div class="summary-sub" id="disp-income-count">0 sources</div>
+      <div class="summary-sub" id="disp-income-count">0 sources this month</div>
     </div>
     <div class="summary-card">
       <div class="summary-label">Expenses</div>
@@ -58,12 +58,12 @@
     <div class="summary-card">
       <div class="summary-label">Needs</div>
       <div class="summary-val text-income" id="disp-needs">₹0</div>
-      <div class="summary-sub">essentials</div>
+      <div class="summary-sub" id="disp-needs-pct">of budget</div>
     </div>
     <div class="summary-card">
       <div class="summary-label">Wants</div>
       <div class="summary-val" style="color:var(--wants)" id="disp-wants">₹0</div>
-      <div class="summary-sub">discretionary</div>
+      <div class="summary-sub" id="disp-wants-pct">of budget</div>
     </div>
   </div>
 
@@ -78,33 +78,13 @@
   <div class="section-label">Log an expense</div>
   <div class="add-row">
     <input type="text" id="expense-input" placeholder="e.g. Spotify ₹119, Biryani 220, Uber ride...">
-    <button class="btn-income" id="income-toggle-btn">+ Income</button>
     <button class="btn-add" id="log-expense-btn">Log ↗</button>
   </div>
   <div id="expense-ai-result" class="ai-result-box"></div>
 
-  <div id="income-form" style="display:none;margin-bottom:16px">
-    <div class="income-row">
-      <input type="number" id="income-amount" placeholder="Amount (₹)" min="0" step="0.01">
-      <select id="income-source" class="field-input" style="padding:12px 14px">
-        <option value="Pocket Money">Pocket Money</option>
-        <option value="Salary">Salary</option>
-        <option value="Internship">Internship</option>
-        <option value="Scholarship">Scholarship</option>
-        <option value="Freelance">Freelance</option>
-        <option value="Refund">Refund</option>
-        <option value="Gift">Gift</option>
-        <option value="Investment Returns">Investment Returns</option>
-        <option value="Cashback">Cashback</option>
-        <option value="Other">Other</option>
-      </select>
-      <button class="btn-income" id="add-income-btn">Add</button>
-    </div>
-  </div>
-
-  <div class="section-label">Today's transactions</div>
+  <div class="section-label" style="margin-top:20px">Today's transactions</div>
   <div class="tx-list" id="tx-list">
-    <div style="color:var(--gray5);font-size:14px;text-align:center;padding:24px 0">No transactions yet — log an expense above</div>
+    <div style="color:var(--gray5);font-size:14px;text-align:center;padding:24px 0">No transactions yet today — log an expense above</div>
   </div>
 
   <div class="section-label">Budgets</div>
@@ -137,7 +117,7 @@
 
   <div class="chart-card">
     <div class="chart-title chart-title-spaced">Category Breakdown</div>
-    <div class="chart-sub">Where your money went</div>
+    <div class="chart-sub">Where your money went this month</div>
     <div class="chart-wrap chart-wrap-macro"><canvas id="cat-bar-chart"></canvas></div>
   </div>
 
@@ -194,22 +174,23 @@
 
 <!-- ═══════════════════ PROFILE PAGE ═══════════════════ -->
 <div id="page-profile" class="page">
-  <div class="section-label">Your details</div>
+
+  <!-- Personal details -->
+  <div class="section-label">Personal details</div>
   <div class="profile-section">
     <div class="profile-row">
       <div class="field-group"><div class="field-label">Name</div><input class="field-input" id="p-name" type="text" placeholder="Your name"></div>
       <div class="field-group"><div class="field-label">Age</div><input class="field-input" id="p-age" type="number" value="20" min="13" max="80"></div>
     </div>
-    <div class="field-group"><div class="field-label">Occupation</div>
-      <select class="field-input" id="p-occupation">
-        <option value="Student">Student</option>
-        <option value="Working professional">Working professional</option>
-        <option value="Freelancer">Freelancer</option>
-        <option value="Other">Other</option>
-      </select>
-    </div>
     <div class="profile-row">
-      <div class="field-group"><div class="field-label">Monthly income (₹)</div><input class="field-input" id="p-income" type="number" value="15000" min="0"></div>
+      <div class="field-group"><div class="field-label">Occupation</div>
+        <select class="field-input" id="p-occupation">
+          <option value="Student">Student</option>
+          <option value="Working professional">Working professional</option>
+          <option value="Freelancer">Freelancer</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
       <div class="field-group"><div class="field-label">Currency</div>
         <select class="field-input" id="p-currency">
           <option value="₹">₹ INR</option>
@@ -219,28 +200,156 @@
         </select>
       </div>
     </div>
-    <div class="field-group"><div class="field-label">Financial goal</div>
-      <select class="field-input" id="p-goal">
-        <option value="Save aggressively">Save aggressively</option>
-        <option value="Build an emergency fund">Build an emergency fund</option>
-        <option value="Invest regularly">Invest regularly</option>
-        <option value="Reduce spending">Reduce spending</option>
-        <option value="Pay off debt">Pay off debt</option>
-        <option value="No specific goal">No specific goal</option>
-      </select>
+  </div>
+
+  <!-- Income sources -->
+  <div class="section-label">Income sources</div>
+  <div class="income-sources-list" id="income-sources-list"></div>
+
+  <!-- Add income source form -->
+  <div class="income-add-card" id="income-add-card">
+    <div class="income-add-row">
+      <div class="field-group" style="flex:1">
+        <div class="field-label">Source</div>
+        <select class="field-input" id="inc-source">
+          <option value="Pocket Money">Pocket Money</option>
+          <option value="Salary">Salary</option>
+          <option value="Internship">Internship</option>
+          <option value="Scholarship">Scholarship</option>
+          <option value="Freelance">Freelance</option>
+          <option value="Refund">Refund</option>
+          <option value="Gift">Gift</option>
+          <option value="Investment Returns">Investment Returns</option>
+          <option value="Cashback">Cashback</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <div class="field-group" style="flex:1">
+        <div class="field-label">Period</div>
+        <select class="field-input" id="inc-period">
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly" selected>Monthly</option>
+        </select>
+      </div>
     </div>
-    <div class="field-group"><div class="field-label">Monthly budget (₹)</div><input class="field-input" id="p-budget" type="number" value="10000" min="0"></div>
-    <button class="btn-calc" id="save-profile-btn">Save profile</button>
+    <div class="income-add-row">
+      <div class="field-group" style="flex:1">
+        <div class="field-label">Amount</div>
+        <input class="field-input" id="inc-amount" type="number" placeholder="0" min="0" step="0.01">
+      </div>
+      <div class="field-group" style="flex:1;justify-content:flex-end;padding-top:20px">
+        <button class="btn-add-income" id="add-income-source-btn">+ Add source</button>
+      </div>
+    </div>
   </div>
 
-  <div class="section-label">Your targets</div>
+  <!-- Income totals derived display -->
+  <div class="income-totals-grid" id="income-totals-grid">
+    <div class="income-total-card">
+      <div class="income-total-label">Daily</div>
+      <div class="income-total-val text-income" id="inc-total-daily">₹0</div>
+    </div>
+    <div class="income-total-card">
+      <div class="income-total-label">Weekly</div>
+      <div class="income-total-val text-income" id="inc-total-weekly">₹0</div>
+    </div>
+    <div class="income-total-card">
+      <div class="income-total-label">Monthly</div>
+      <div class="income-total-val text-income" id="inc-total-monthly">₹0</div>
+    </div>
+    <div class="income-total-card">
+      <div class="income-total-label">Annual</div>
+      <div class="income-total-val text-income" id="inc-total-annual">₹0</div>
+    </div>
+  </div>
+
+  <!-- Savings target -->
+  <div class="section-label" style="margin-top:8px">Savings target</div>
+  <div class="profile-section">
+    <div class="savings-mode-row">
+      <button class="savings-mode-btn active" id="savings-mode-pct" data-mode="percent">% of income</button>
+      <button class="savings-mode-btn" id="savings-mode-amt" data-mode="amount">Fixed amount</button>
+    </div>
+    <div id="savings-pct-row" class="savings-input-row">
+      <div class="field-group" style="flex:1">
+        <div class="field-label">Save this % of monthly income</div>
+        <div class="pct-input-wrap">
+          <input class="field-input pct-input" id="p-savings-pct" type="number" value="20" min="0" max="100" step="1">
+          <span class="pct-symbol">%</span>
+        </div>
+      </div>
+      <div class="savings-derived" id="savings-derived-pct">= ₹0 / month</div>
+    </div>
+    <div id="savings-amt-row" class="savings-input-row" style="display:none">
+      <div class="field-group" style="flex:1">
+        <div class="field-label">Save this amount each month</div>
+        <input class="field-input" id="p-savings-amt" type="number" placeholder="0" min="0" step="1">
+      </div>
+      <div class="savings-derived" id="savings-derived-amt">= 0% of income</div>
+    </div>
+  </div>
+
+  <!-- Spending allocation -->
+  <div class="section-label">Spending allocation</div>
+  <div class="profile-section">
+    <div class="alloc-note">Set how you want to split your spendable income (after savings). Must add up to 100%.</div>
+    <div class="profile-row">
+      <div class="field-group">
+        <div class="field-label">Needs %</div>
+        <div class="pct-input-wrap">
+          <input class="field-input pct-input" id="p-needs-pct" type="number" value="60" min="0" max="100" step="1">
+          <span class="pct-symbol">%</span>
+        </div>
+        <div class="alloc-derived text-income" id="needs-derived">= ₹0</div>
+      </div>
+      <div class="field-group">
+        <div class="field-label">Wants %</div>
+        <div class="pct-input-wrap">
+          <input class="field-input pct-input" id="p-wants-pct" type="number" value="40" min="0" max="100" step="1">
+          <span class="pct-symbol">%</span>
+        </div>
+        <div class="alloc-derived" style="color:var(--wants)" id="wants-derived">= ₹0</div>
+      </div>
+    </div>
+    <div class="alloc-validation" id="alloc-validation"></div>
+    <div class="section-label" style="margin-top:4px">Financial goal</div>
+    <select class="field-input" id="p-goal">
+      <option value="Save aggressively">Save aggressively</option>
+      <option value="Build an emergency fund">Build an emergency fund</option>
+      <option value="Invest regularly">Invest regularly</option>
+      <option value="Reduce spending">Reduce spending</option>
+      <option value="Pay off debt">Pay off debt</option>
+      <option value="No specific goal">No specific goal</option>
+    </select>
+    <button class="btn-calc" id="save-profile-btn" style="margin-top:12px">Save profile</button>
+  </div>
+
+  <!-- Derived targets display -->
+  <div class="section-label">Your financial targets</div>
   <div class="targets-grid" id="profile-targets-grid">
-    <div class="target-card"><div class="target-label">Monthly Budget</div><div class="target-val text-income" id="t-budget">₹0</div></div>
-    <div class="target-card"><div class="target-label">Savings Target</div><div class="target-val text-savings" id="t-savings">₹0</div></div>
-    <div class="target-card"><div class="target-label">Needs Limit</div><div class="target-val" style="color:var(--needs)" id="t-needs">₹0</div></div>
-    <div class="target-card"><div class="target-label">Wants Limit</div><div class="target-val" style="color:var(--wants)" id="t-wants">₹0</div></div>
+    <div class="target-card">
+      <div class="target-label">Monthly Income</div>
+      <div class="target-val text-income" id="t-income">₹0</div>
+    </div>
+    <div class="target-card">
+      <div class="target-label">Monthly Savings</div>
+      <div class="target-val text-savings" id="t-savings">₹0</div>
+      <div class="target-sublabel" id="t-savings-sub">0% of income</div>
+    </div>
+    <div class="target-card">
+      <div class="target-label">Needs Budget</div>
+      <div class="target-val" style="color:var(--needs)" id="t-needs">₹0</div>
+      <div class="target-sublabel" id="t-needs-sub">60% of spendable</div>
+    </div>
+    <div class="target-card">
+      <div class="target-label">Wants Budget</div>
+      <div class="target-val" style="color:var(--wants)" id="t-wants">₹0</div>
+      <div class="target-sublabel" id="t-wants-sub">40% of spendable</div>
+    </div>
   </div>
 
+  <!-- Data management -->
   <div class="section-label">Data</div>
   <div class="profile-section">
     <button class="btn-calc" id="export-profile-btn">⬇ Export all data (JSON)</button>
