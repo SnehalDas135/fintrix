@@ -789,8 +789,6 @@ function renderProfile(){
   document.getElementById('p-age').value = p.age||20;
   document.getElementById('p-occupation').value = p.occupation||'Student';
   document.getElementById('p-currency').value = p.currency||'₹';
-  document.getElementById('p-goal').value = p.financialGoal||'Save aggressively';
-
   // Savings mode
   var mode = p.savingsMode||'percent';
   document.getElementById('savings-mode-pct').classList.toggle('active', mode==='percent');
@@ -816,8 +814,6 @@ function saveProfile(){
   p.age = parseInt(document.getElementById('p-age').value)||20;
   p.occupation = document.getElementById('p-occupation').value;
   p.currency = document.getElementById('p-currency').value;
-  p.financialGoal = document.getElementById('p-goal').value;
-
   // Savings
   p.savingsMode = p.savingsMode || 'percent'; // mode set via button clicks
   p.savingsPct = Math.min(100, Math.max(0, parseFloat(document.getElementById('p-savings-pct').value)||0));
